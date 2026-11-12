@@ -2,6 +2,15 @@ package com.example.assistent
 
 import android.app.Activity
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.RecognitionListener
+import android.speech.tts.TextToSpeech
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -10,20 +19,40 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.*
+import java.util.Locale
 import kotlin.math.*
 
 class MainActivity : Activity() {
 
     private var voiceEnabled = false
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var tts: TextToSpeech? = null
+
     private lateinit var voiceSwitch: TextView
     private lateinit var statusText: TextView
-    private lateinit var sphereView: SphereView
+
+    private val handler = Handler(Looper.getMainLooper())
+
+    private val permissionCode = 101
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         window.statusBarColor = Color.rgb(5, 9, 24)
         window.navigationBarColor = Color.rgb(5, 9, 24)
+
+        tts = TextToSpeech(this) { result ->
+            if (result == TextToSpeech.SUCCESS) {
+                val uz = tts?.setLanguage(Locale("uz", "UZ"))
+
+                if (uz == TextToSpeech.LANG_NOT_SUPPORTED ||
+                    uz == TextToSpeech.LANG_MISSING_DATA) {
+                    tts?.language = Locale.getDefault()
+                }
+
+                tts?.setSpeechRate(1.0f)
+            }
+        }
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -78,10 +107,8 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(1, 0, 1f)
         )
 
-        sphereView = SphereView()
-
         root.addView(
-            sphereView,
+            SphereView(),
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 310
@@ -99,7 +126,7 @@ class MainActivity : Activity() {
             statusText,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                45
+                55
             )
         )
 
@@ -112,8 +139,7 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = roundedBackground(
-                Color.rgb(17, 25, 48),
-                28
+                Color.rgb(17, 25, 48), 28
             )
             setPadding(16, 5, 8, 5)
         }
@@ -138,8 +164,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             background = roundedBackground(
-                Color.rgb(35, 85, 190),
-                50
+                Color.rgb(35, 85, 190), 50
             )
 
             setOnClickListener {
@@ -147,13 +172,6 @@ class MainActivity : Activity() {
 
                 if (command.isNotEmpty()) {
                     statusText.text = "Buyruq qabul qilindi"
-
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Buyruq: $command",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
                     commandInput.text.clear()
                 }
             }
@@ -180,20 +198,142 @@ class MainActivity : Activity() {
 
         voiceSwitch.background = switchBackground(voiceEnabled)
 
-        statusText.text = if (voiceEnabled) {
-            "Ovozli boshqaruv yoqildi"
+        if (voiceEnabled) {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+
+                requestPermissions(
+                    arrayOf(Manifest.permission.RECORD_AUDIO),
+                    permissionCode
+                )
+            } else {
+                startListening()
+            }
         } else {
-            "Ovozli boshqaruv o‘chirildi"
+            stopListening()
+            statusText.text = "Ovozli boshqaruv o‘chirildi"
+        }
+    }
+
+    private fun startListening() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            statusText.text = "Nutqni tanish xizmati mavjud emas"
+            return
         }
 
-        voiceSwitch.animate()
-            .scaleX(0.85f)
-            .scaleY(0.85f)
-            .setDuration(100)
-            .withEndAction {
-                voiceSwitch.scaleX = 1f
-                voiceSwitch.scaleY = 1f
+        try {
+            speechRecognizer?.destroy()
+
+            speechRecognizer =
+                SpeechRecognizer.createSpeechRecognizer(this)
+
+            speechRecognizer?.setRecognitionListener(
+                object : RecognitionListener {
+
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        statusText.text = "Sizni tinglayapman..."
+                    }
+
+                    override fun onBeginningOfSpeech() {
+                        statusText.text = "Ovoz aniqlandi..."
+                    }
+
+                    override fun onRmsChanged(rmsdB: Float) {}
+
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+
+                    override fun onEndOfSpeech() {
+                        statusText.text = "Ovoz tahlil qilinmoqda..."
+                    }
+
+                    override fun onError(error: Int) {
+                        statusText.text =
+                            "Ovoz aniqlanmadi. Qayta yoqib ko‘ring."
+                    }
+
+                    override fun onResults(results: Bundle?) {
+                        val matches = results?.getStringArrayList(
+                            SpeechRecognizer.RESULTS_RECOGNITION
+                        )
+
+                        val spokenText = matches?.firstOrNull()
+
+                        if (!spokenText.isNullOrBlank()) {
+                            statusText.text = spokenText
+
+                            tts?.speak(
+                                "Siz aytdingiz: $spokenText",
+                                TextToSpeech.QUEUE_FLUSH,
+                                null,
+                                "assistant_reply"
+                            )
+                        }
+                    }
+
+                    override fun onPartialResults(
+                        partialResults: Bundle?
+                    ) {}
+
+                    override fun onEvent(
+                        eventType: Int,
+                        params: Bundle?
+                    ) {}
+                }
+            )
+
+            val intent = Intent(
+                RecognizerIntent.ACTION_RECOGNIZE_SPEECH
+            ).apply {
+                putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                )
+                putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE,
+                    "uz-UZ"
+                )
+                putExtra(
+                    RecognizerIntent.EXTRA_PARTIAL_RESULTS,
+                    false
+                )
             }
+
+            speechRecognizer?.startListening(intent)
+
+        } catch (e: Exception) {
+            statusText.text = "Mikrofonni ishga tushirib bo‘lmadi"
+        }
+    }
+
+    private fun stopListening() {
+        try {
+            speechRecognizer?.stopListening()
+            speechRecognizer?.cancel()
+        } catch (_: Exception) {}
+
+        statusText.text = "Ovozli boshqaruv o‘chirildi"
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(
+            requestCode, permissions, grantResults
+        )
+
+        if (requestCode == permissionCode) {
+            if (grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED &&
+                voiceEnabled) {
+                startListening()
+            } else {
+                voiceEnabled = false
+                voiceSwitch.background = switchBackground(false)
+                statusText.text = "Mikrofon ruxsati berilmadi"
+            }
+        }
     }
 
     private fun switchBackground(
@@ -202,13 +342,9 @@ class MainActivity : Activity() {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 40f
-
             setColor(
-                if (enabled) {
-                    Color.rgb(25, 110, 220)
-                } else {
-                    Color.rgb(35, 43, 65)
-                }
+                if (enabled) Color.rgb(25, 110, 220)
+                else Color.rgb(35, 43, 65)
             )
         }
     }
@@ -224,30 +360,37 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        speechRecognizer?.destroy()
+        tts?.stop()
+        tts?.shutdown()
+        super.onDestroy()
+    }
+
     inner class SphereView : View(this@MainActivity) {
 
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         private var angle = 0f
 
-        private val handler = android.os.Handler(
-            android.os.Looper.getMainLooper()
-        )
+        private val animationHandler =
+            Handler(Looper.getMainLooper())
 
         private val animation = object : Runnable {
             override fun run() {
                 angle += 0.012f
                 invalidate()
-                handler.postDelayed(this, 30)
+                animationHandler.postDelayed(this, 30)
             }
         }
 
         override fun onAttachedToWindow() {
             super.onAttachedToWindow()
-            handler.post(animation)
+            animationHandler.post(animation)
         }
 
         override fun onDetachedFromWindow() {
-            handler.removeCallbacks(animation)
+            animationHandler.removeCallbacks(animation)
             super.onDetachedFromWindow()
         }
 
@@ -279,26 +422,19 @@ class MainActivity : Activity() {
                     val depth = ((z + 1) / 2).toFloat()
                     val dotSize = 1.5f + depth * 2.1f
 
-                    val red = Color.rgb(255, 45, 75)
-                    val blue = Color.rgb(35, 125, 255)
-
                     val mix = ((x + y + 2) / 4)
-                        .coerceIn(0.0, 1.0)
-                        .toFloat()
+                        .coerceIn(0.0, 1.0).toFloat()
 
                     paint.color = blendColors(
-                        red,
-                        blue,
+                        Color.rgb(255, 45, 75),
+                        Color.rgb(35, 125, 255),
                         mix
                     )
 
                     paint.alpha = (100 + depth * 155).toInt()
 
                     canvas.drawCircle(
-                        px,
-                        py,
-                        dotSize,
-                        paint
+                        px, py, dotSize, paint
                     )
                 }
             }
@@ -313,10 +449,8 @@ class MainActivity : Activity() {
 
             val r = Color.red(start) * inverse +
                     Color.red(end) * ratio
-
             val g = Color.green(start) * inverse +
                     Color.green(end) * ratio
-
             val b = Color.blue(start) * inverse +
                     Color.blue(end) * ratio
 
