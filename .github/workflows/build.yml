@@ -26,7 +26,14 @@ jobs:
           gradle-version: 8.9
 
       - name: Android SDK o‘rnatish
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: 12266719
+
+      - name: Android SDK komponentlarini o‘rnatish
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: APK yig‘ish
         run: gradle assembleDebug
