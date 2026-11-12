@@ -6,11 +6,10 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
-import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.*
-import android.graphics.drawable.GradientDrawable
 import kotlin.math.*
 
 class MainActivity : Activity() {
@@ -56,8 +55,9 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             background = switchBackground(false)
-            setPadding(8, 0, 8, 0)
-            setOnClickListener { toggleVoice() }
+            setOnClickListener {
+                toggleVoice()
+            }
         }
 
         header.addView(
@@ -73,13 +73,13 @@ class MainActivity : Activity() {
             )
         )
 
-        val spaceTop = View(this)
         root.addView(
-            spaceTop,
+            View(this),
             LinearLayout.LayoutParams(1, 0, 1f)
         )
 
         sphereView = SphereView()
+
         root.addView(
             sphereView,
             LinearLayout.LayoutParams(
@@ -103,9 +103,8 @@ class MainActivity : Activity() {
             )
         )
 
-        val spaceBottom = View(this)
         root.addView(
-            spaceBottom,
+            View(this),
             LinearLayout.LayoutParams(1, 0, 1f)
         )
 
@@ -125,7 +124,7 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             setHintTextColor(Color.rgb(125, 140, 170))
             background = null
-            singleLine = true
+            setSingleLine(true)
         }
 
         inputRow.addView(
@@ -142,16 +141,20 @@ class MainActivity : Activity() {
                 Color.rgb(35, 85, 190),
                 50
             )
+
             setOnClickListener {
                 val command = commandInput.text.toString().trim()
+
                 if (command.isNotEmpty()) {
                     statusText.text = "Buyruq qabul qilindi"
-                    commandInput.text.clear()
+
                     Toast.makeText(
                         this@MainActivity,
                         "Buyruq: $command",
                         Toast.LENGTH_SHORT
                     ).show()
+
+                    commandInput.text.clear()
                 }
             }
         }
@@ -176,7 +179,12 @@ class MainActivity : Activity() {
         voiceEnabled = !voiceEnabled
 
         voiceSwitch.background = switchBackground(voiceEnabled)
-        voiceSwitch.text = if (voiceEnabled) "●" else "●"
+
+        statusText.text = if (voiceEnabled) {
+            "Ovozli boshqaruv yoqildi"
+        } else {
+            "Ovozli boshqaruv o‘chirildi"
+        }
 
         voiceSwitch.animate()
             .scaleX(0.85f)
@@ -186,21 +194,21 @@ class MainActivity : Activity() {
                 voiceSwitch.scaleX = 1f
                 voiceSwitch.scaleY = 1f
             }
-
-        statusText.text = if (voiceEnabled) {
-            "Ovozli boshqaruv yoqildi"
-        } else {
-            "Ovozli boshqaruv o‘chirildi"
-        }
     }
 
-    private fun switchBackground(enabled: Boolean): GradientDrawable {
+    private fun switchBackground(
+        enabled: Boolean
+    ): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 40f
+
             setColor(
-                if (enabled) Color.rgb(25, 110, 220)
-                else Color.rgb(35, 43, 65)
+                if (enabled) {
+                    Color.rgb(25, 110, 220)
+                } else {
+                    Color.rgb(35, 43, 65)
+                }
             )
         }
     }
@@ -275,11 +283,15 @@ class MainActivity : Activity() {
                     val blue = Color.rgb(35, 125, 255)
 
                     val mix = ((x + y + 2) / 4)
-                        .coerceIn(0.0, 1.0).toFloat()
+                        .coerceIn(0.0, 1.0)
+                        .toFloat()
 
-                    val color = blendColors(red, blue, mix)
+                    paint.color = blendColors(
+                        red,
+                        blue,
+                        mix
+                    )
 
-                    paint.color = color
                     paint.alpha = (100 + depth * 155).toInt()
 
                     canvas.drawCircle(
@@ -301,12 +313,18 @@ class MainActivity : Activity() {
 
             val r = Color.red(start) * inverse +
                     Color.red(end) * ratio
+
             val g = Color.green(start) * inverse +
                     Color.green(end) * ratio
+
             val b = Color.blue(start) * inverse +
                     Color.blue(end) * ratio
 
-            return Color.rgb(r.toInt(), g.toInt(), b.toInt())
+            return Color.rgb(
+                r.toInt(),
+                g.toInt(),
+                b.toInt()
+            )
         }
     }
 }
